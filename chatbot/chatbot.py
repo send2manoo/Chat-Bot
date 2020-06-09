@@ -237,12 +237,58 @@ def modelInputs():
     targets = tf.placeholder(dtype=tf.int32, shape=(None, None), name='Target')
     # tf.int32 - type bcuz we did data preprocessing steps Everything is converted into Integers
     # shape(None, None) - sorted_clean_answers consists of list of Integers with padding will get 2D-Matrix and we will compare target with sorted_clean_answers
-    # name = 'Input' - Node or Vertex name is 'Input' for Tensorboard Visualizations
+    # name = 'Target' - Node or Vertex name is 'Input' for Tensorboard Visualizations
     lr = tf.placeholder(dtype=tf.float32, name='learning_rate')
-    # tf.float32 - shouldn't be Integer
+    # tf.float32 - shouldn't be Integer bcuz learning rate usually contains some decimal digits
     keep_prob = tf.placeholder(dtype=tf.float32, name='dropout')
     # keep_prob - is the parameter that controls dropout rate
     return inputs, targets, lr, keep_prob 
+
+
+# Preprocessing the Targets
+# Encoder => Inputs => Questions
+# Decoder => Outputs or (Targets) => Answers 
+# 1) RNN or LSTM will not allow singel Target that is SINGLE ANSWER. Creating the batches for sorted_clean_answers. why sorted_clean_answers bcuz we need it for decoder. decoder accept the sorted_clean_answers
+# 2) Append <SOS> token to each of sorted_clean_answers beginning. 
+def preprocessTargets(targets, word2Int, batchSize):
+    leftSide = tf.fill(dims = [batchSize, 1], value = word2Int['<SOS>'], name='fill_<SOS>') 
+    # prettyprint # Output tensor has shape [2, 3]. fill([2, 3], 9) ==> [[9, 9, 9][9, 9, 9]]
+    rightSide = tf.strided_slice(input_ = targets, begin = [0, 0], end=[batchSize, -1], strides=[1,1], name='strided_Slice')
+    # start with [0, 0] cell end with [10, -1] 10 row excepts last column with stride [1, 1] move One by one cell
+    preprocessedTargets = tf.concat([leftSide, rightSide], axis = 1, name='concat') # axis = 1 => means horizontal concat
+    return preprocessedTargets
+
+
+# Creating the Encoder RNN layer
+def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_length):
+    # rnn_inputs = modelInputs() functions
+    # rnn_size = no f input Tensors
+    # num_layers = no of layers
+    # keep_prob = dropout rate
+    # sequence_length = length of the Questions in each Batch
+    lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
+    lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = keep_prob) # it wraps lstm Object that we created lstm above
+    # dropout rate = 20% of neurons weights is not Updated to avoid Overfitting
+    encoder_cell = tf.contrib.rnn.MultiRNNCell([lstm_dropout] * num_layers) # Usually it is a Stacked lstm_dropout that we created above
+    # eg. num_layers = 10 => lstm_dropout * 10 => we have created 10 lstm_dropout layer and stacked Implicitly
+    _, encoder_state = tf.nn.bidirectional_dynamic_rnn(cell_fw = encoder_cell, 
+                                                       cell_bw = encoder_cell,
+                                                       inputs = rnn_inputs,
+                                                       sequence_length = sequence_length,
+                                                       dtype = tf.float32)
+    # A tuple (_, encoder_state) 
+    # Not Required for This Module: where: _: A tuple (output_fw, output_bw)
+    # we are going to use encoder_state: A tuple (output_state_fw, output_state_bw) containing the forward and the backward final states of bidirectional rnn
+    # The input_size of forward and backward cell must match
+    return encoder_state
+
+
+# Decoding the Training set
+
+
+
+
+
 
 
 
