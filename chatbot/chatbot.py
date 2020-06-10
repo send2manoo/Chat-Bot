@@ -202,7 +202,7 @@ for answer in cleanAnswers:
             listOfIntsForEachAnswer.append(answerswords2Int[word]) # else take out the value for given words to append listOfIntsForEachAnswer
     answersIntoInt.append(listOfIntsForEachAnswer)
 
-# How can sorting by length of the question help? It’s attributed to reduce loss through reducing the use of padding to help speed up training
+'''How can sorting by length of the question help? It’s attributed to reduce loss through reducing the use of padding to help speed up training'''
 # Sorting Questions and Answers by the length of Questions by 25 maximum words why bcuz speedup the training help to reduce loss
 # It will reduce the amount of padding during training
 # Adding test.py file for References
@@ -225,12 +225,15 @@ for length in range(1, 25+1):  # miminum range of values should be 1 bcuz (Y or 
             # but the corresponding answersIntoInt[81] contains list of Integer values based on questionsIntoInt[81] , so we have to appended in sorted_clean_answers list in this case Answers is not Sorted because of Variable list of Integers.
             # We are going to only Sort questionsIntoInt
             # CLEAR
+            
+            
 ########### PART 2 - BUILDING THE SEQ2SEQ MODEL #######################
             
 # creating the Placeholder for the Inputs and the Targets
 def modelInputs():
     # Create a Node in a Graph
     inputs = tf.placeholder(dtype=tf.int32, shape=(None, None), name='Input')
+    '''Why is the input 2 dimensional? The input is 2 dimensional because the neural networks can only accept inputs that are in a batch, as opposed to single inputs. We must add 1 dimension corresponding to the batch.'''
     # tf.int32 - type bcuz we did data preprocessing steps Everything is converted into Integers
     # shape(None, None) - sorted_clean_questions consists of list of Integers with padding will get 2D-Matrix
     # name = 'Input' - Node or Vertex name is 'Input' for Tensorboard Visualizations
@@ -246,6 +249,11 @@ def modelInputs():
 
 
 # Preprocessing the Targets
+'''Why do we delete the last column of the answer before adding <SOS>in the
+process targets function? We have to delete the last column to preserve the max sequence
+length since after that we make a concatenation to add the <SOS>token at the beginning of
+the sequence, we must remove the last token before so that the sequence length doesn’t go
+over the max sequence length'''
 # Encoder => Inputs => Questions
 # Decoder => Outputs or (Targets) => Answers 
 # 1) RNN or LSTM will not allow singel Target that is SINGLE ANSWER. Creating the batches for sorted_clean_answers. why sorted_clean_answers bcuz we need it for decoder. decoder accept the sorted_clean_answers
@@ -254,12 +262,13 @@ def preprocessTargets(targets, word2Int, batchSize):
     leftSide = tf.fill(dims = [batchSize, 1], value = word2Int['<SOS>'], name='fill_<SOS>') 
     # prettyprint # Output tensor has shape [2, 3]. fill([2, 3], 9) ==> [[9, 9, 9][9, 9, 9]]
     rightSide = tf.strided_slice(input_ = targets, begin = [0, 0], end=[batchSize, -1], strides=[1,1], name='strided_Slice')
-    # start with [0, 0] cell end with [10, -1] 10 row excepts last column with stride [1, 1] move One by one cell
+    # start with [0, 0] cell end with [10, -1] 10 row except last column with stride [1, 1] move One by one cell
     preprocessedTargets = tf.concat([leftSide, rightSide], axis = 1, name='concat') # axis = 1 => means horizontal concat
     return preprocessedTargets
 
 
 # Creating the Encoder RNN layer
+'''LSTM stands for Long Short Term Memory and it’s a very popular type of RNN that is prominent for many AI implementations due to the architecture and benefits'''
 def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_length):
     # rnn_inputs = modelInputs() functions
     # rnn_size = no f input Tensors
@@ -267,10 +276,14 @@ def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_leng
     # keep_prob = dropout rate
     # sequence_length = length of the Questions in each Batch
     lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
+    '''Dropout is a technique used for regularization in neural nets and it can help in learning and preventing overfitting with the data.'''
     lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = keep_prob) # it wraps lstm Object that we created lstm above
     # dropout rate = 20% of neurons weights is not Updated to avoid Overfitting
     encoder_cell = tf.contrib.rnn.MultiRNNCell([lstm_dropout] * num_layers) # Usually it is a Stacked lstm_dropout that we created above
     # eg. num_layers = 10 => lstm_dropout * 10 => we have created 10 lstm_dropout layer and stacked Implicitly
+    '''What is the difference between an encoder cell and encoder state? An encoder cell
+    is the cell inside the encoder RNN that contains the stacked LSTM layers. An encoder state
+    is the output returned by the encoder RNN, right after the last fully connected layer.'''
     _, encoder_state = tf.nn.bidirectional_dynamic_rnn(cell_fw = encoder_cell, 
                                                        cell_bw = encoder_cell,
                                                        inputs = rnn_inputs,
@@ -284,13 +297,40 @@ def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_leng
 
 
 # Decoding the Training set
+def decodingTrainingSet(encoder_state, decoder_cell, decoder_embedded_input, sequence_length, decoding_scope, output_function, keep_prob, batch_size) :
+# encoder_state - we getting from encoder_rnn_layer
+# decoder_cell - The cell in the RNN of the Decoder
+# decoder_embedded_input - An embedding is a mapping of discrete Objects. Such as WORDS to Vector of REAL numbers.
+# sequence_length = length of the Answers in each Batch
+# decoding_scope = tf.variable_scope => An Advanced Data Structure that will WRAP your TENSORFLOW Variables.
+# output_function - Is the Function to return Decoder outputs
+# keep_prob - dropout rate
+# batch_size - (10, 1) 
+    attention_states = tf.zeros(shape=(batch_size, 1, decoder_cell.output_size), dtype=tf.float32, name='attn_states_zeros')
+    #  _ = tf.zeros(shape=(10, 3,3), dtype=tf.float32)
+    attention_keys, attention_values, attention_score_function, attention_construct_function = tf.contrib.seq2seq.prepare_attention(attention_states=attention_states, attention_option = 'bahdanau', num_units = decoder_cell.output_size)
+    #    attention_keys: to be compared with target states.
+    #    attention_values: to be used to construct context vectors. Context(Returned by the Encoder) Vectors used by the Decoder as the first element of the decoding.
+    #    attention_score_fn: to compute similarity between key and target states.
+    #    attention_construct_fn: to build attention states
+    training_decoder_function = tf.contrib.seq2seq.attention_decoder_fn_train(encoder_state = encoder_state[0],
+                                                                              attention_keys = attention_keys,
+                                                                              attention_values = attention_values,
+                                                                              attention_score_fn = attention_score_function,
+                                                                              attention_construct_fn = attention_construct_function,
+                                                                              name = 'attn_dec_train')
+    # Attentional decoder function for dynamic_rnn_decoder during training
+    decoder_output, decoder_final_state, decoder_context_state = tf.contrib.seq2seq.dynamic_rnn_decoder(cell = decoder_cell,
+                                                                                                        decoder_fn = training_decoder_function,
+                                                                                                        inputs = decoder_embedded_input,
+                                                                                                        sequence_length = sequence_length,
+                                                                                                        scope = decoding_scope)
+    # Dynamic RNN decoder for a sequence-to-sequence model specified by RNNCell and decoder function
+    decoder_output_dropout = tf.nn.dropout(x = decoder_output, keep_prob = keep_prob) # Computes dropout
+    return output_function(decoder_output_dropout)
+    
+    
 
-
-
-
-
-
-
-
-
-
+    
+    
+    
