@@ -85,7 +85,7 @@ for line in lines:
 # Creating a List of conversations LineIds
 conversationsIds = []
 for conversation in conversations[:-1]:
-    _conversation = conversation.split(" +++$+++ ")[-1][1:-1].replace("'", "").replace(" ", "") # taking last value and ignore ['A',' B'] => 'A',' B' => A, B => A,B => str(A,B)                                            
+    _conversation = conversation.split(" +++$+++ ")[-1][1:-1].replace("'", "").replace(" ", "") # taking last value and ignore ['A', 'B'] => 'A', 'B' => A, B => A,B => str(A,B)                                            
 #    print(_conversation) # type(_conversation) => str
     conversationsIds.append(_conversation.split(",")) # A,B => ['A', 'B']
     
@@ -129,14 +129,14 @@ for answer in answers:
     
 # Creating the Dictionary that maps word to its number of Occurances
 word2Count = {}
-for question in cleanQuestions:  # Taking the first list list[0] = ['how are you']
-    for word in question.split(): # Then split() by space , ['how are you'] => str(how, are, you)
+for question in cleanQuestions:  # Taking the first list list[0] = 'how are you'
+    for word in question.split(): # Then split() by space , 'how are you' => str(how, are, you)
         if word not in word2Count: # Initially given word is not in the dictionary, word2Count['how'] = 1, word2Count['are'] = 1, word2Count['you'] = 1 
             word2Count[word] = 1
         else:
             word2Count[word] += 1  # Second time if word appears then it will incremented to 1, str(how, do, know) => word2Count['how'] = word2Count['how'] + 1
 for answer in cleanAnswers:
-    for word in answer.split(): # ['That is why i am using split function buz It's not a string to split by comma. it is a Sentence to split by single whitspace']
+    for word in answer.split(): # it is a Sentence to split by single whitspace
         if word not in word2Count:
             word2Count[word] = 1
         else:
@@ -262,6 +262,7 @@ def preprocessTargets(targets, word2Int, batchSize):
     leftSide = tf.fill(dims = [batchSize, 1], value = word2Int['<SOS>'], name='fill_<SOS>') 
     # prettyprint # Output tensor has shape [2, 3]. fill([2, 3], 9) ==> [[9, 9, 9][9, 9, 9]]
     rightSide = tf.strided_slice(input_ = targets, begin = [0, 0], end=[batchSize, -1], strides=[1,1], name='strided_Slice')
+    # https://www.digitalocean.com/community/tutorials/how-to-index-and-slice-strings-in-python-3
     # start with [0, 0] cell end with [10, -1] 10 row except last column with stride [1, 1] move One by one cell
     preprocessedTargets = tf.concat([leftSide, rightSide], axis = 1, name='concat') # axis = 1 => means horizontal concat
     return preprocessedTargets
@@ -269,9 +270,9 @@ def preprocessTargets(targets, word2Int, batchSize):
 
 # Creating the Encoder RNN layer
 '''LSTM stands for Long Short Term Memory and it’s a very popular type of RNN that is prominent for many AI implementations due to the architecture and benefits'''
-def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_length):
+def encoder_rnn(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_length):
     # rnn_inputs = modelInputs() functions
-    # rnn_size = no f input Tensors
+    # rnn_size = no of input Tensors
     # num_layers = no of layers
     # keep_prob = dropout rate
     # sequence_length = length of the Questions in each Batch
@@ -283,12 +284,20 @@ def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_leng
     # eg. num_layers = 10 => lstm_dropout * 10 => we have created 10 lstm_dropout layer and stacked Implicitly
     '''What is the difference between an encoder cell and encoder state? An encoder cell
     is the cell inside the encoder RNN that contains the stacked LSTM layers. An encoder state
-    is the output returned by the encoder RNN, right after the last fully connected layer.'''
+    is the output returned by the encoder RNN, right after the last fully connected layer or simply Fully Connected Layer.'''
     _, encoder_state = tf.nn.bidirectional_dynamic_rnn(cell_fw = encoder_cell, 
                                                        cell_bw = encoder_cell,
                                                        inputs = rnn_inputs,
                                                        sequence_length = sequence_length,
                                                        dtype = tf.float32)
+    '''
+    Takes input and builds independent forward and backward RNNs. 
+    The input_size of forward and backward cell must match. The initial state for both directions
+    is zero by default (but can be set optionally) and no intermediate states are
+    ever returned -- the network is fully unrolled for the given (passed in)
+    length(s) of the sequence(s) or completely unrolled if length(s) is not
+    given
+    '''
     # A tuple (_, encoder_state) 
     # Not Required for This Module: where: _: A tuple (output_fw, output_bw)
     # we are going to use encoder_state: A tuple (output_state_fw, output_state_bw) containing the forward and the backward final states of bidirectional rnn
@@ -297,6 +306,8 @@ def encoder_rnn_layer(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_leng
 
 
 # Decoding the Training set
+# 1) https://blog.floydhub.com/attention-mechanism/
+# 2) https://medium.com/datadriveninvestor/attention-in-rnns-321fbcd64f05
 def decodingTrainingSet(encoder_state, decoder_cell, decoder_embedded_input, sequence_length, decoding_scope, output_function, keep_prob, batch_size) :
 # encoder_state - we getting from encoder_rnn_layer
 # decoder_cell - The cell in the RNN of the Decoder
@@ -330,7 +341,154 @@ def decodingTrainingSet(encoder_state, decoder_cell, decoder_embedded_input, seq
     return output_function(decoder_output_dropout)
     
     
+# Decoding the Test/Validation set
+def decodingTestValidationSet(encoder_state, decoder_cell, decoder_embeddings_matrix, sos_id, eos_id, maximum_length, num_words, decoding_scope, output_function, keep_prob, batch_size) :
 
+    ''' What is the difference between the Decoder embeddings matrix and Decoder embeddings input?
+    Also what is the purpose of using multiple columns in the decoder embeddings matrix?
+    The purpose of the embeddings matrix is to compute more efficiently the embedding input.
+    Basically, you multiply your vector of inputs by the embeddings matrix to get your embed-
+    ded inputs. For some further information please take a look at the following resources:
+    https://www.tensorflow.org/versions/master/programmers_guide/embeddingandhttp:
+    //web.stanford.edu/class/cs20si/lectures/notes_04.pdf '''
+# sos_id - start of string, eos_id - end of string, maximum_length - the length of the longest entry you can find in the batch, num_words - total no of words in all the answers dict. e.g answerswords2Int
+# sos_id, eos_id, maximum_length, num_words needs for function tf.contrib.seq2seq.attention_decoder_fn_inference() [for Testing, Validation]
+# encoder_state - we getting from encoder_rnn_layer
+# decoder_cell - The cell in the RNN of the Decoder
+
+# maximum_length = length of the Answers in each Batch
+# decoding_scope = tf.variable_scope => An Advanced Data Structure that will WRAP your TENSORFLOW Variables.
+# output_function - Is the Function to return Decoder outputs
+# keep_prob - dropout rate
+# batch_size - (10, 1) 
+    attention_states = tf.zeros(shape=(batch_size, 1, decoder_cell.output_size), dtype=tf.float32, name='attn_states_zeros')
+    #  _ = tf.zeros(shape=(10, 3,3), dtype=tf.float32)
+    attention_keys, attention_values, attention_score_function, attention_construct_function = tf.contrib.seq2seq.prepare_attention(attention_states=attention_states, attention_option = 'bahdanau', num_units = decoder_cell.output_size)
+    #    attention_keys: to be compared with target states.
+    #    attention_values: to be used to construct context vectors. Context(Returned by the Encoder) Vectors used by the Decoder as the first element of the decoding.
+    #    attention_score_fn: to compute similarity between key and target states.
+    #    attention_construct_fn: to build attention states
+    # validate 10% of data for testing which is not used while Training
+    test_validation_decoder_function = tf.contrib.seq2seq.attention_decoder_fn_inference(output_fn = output_function, 
+                                                                              encoder_state = encoder_state[0],
+                                                                              attention_keys = attention_keys,
+                                                                              attention_values = attention_values,
+                                                                              attention_score_fn = attention_score_function,
+                                                                              attention_construct_fn = attention_construct_function,
+                                                                              embeddings = decoder_embeddings_matrix,
+                                                                              start_of_sequence_id = sos_id,
+                                                                              end_of_sequence_id = eos_id,
+                                                                              maximum_length = maximum_length,
+                                                                              num_decoder_symbols = num_words,
+                                                                              name = 'attn_dec_train')
+    # The attention_decoder_fn_inference is a simple inference function for a sequence-to-sequence model. It should be used when dynamic_rnn_decoder is in the inference mode
+    test_predictions, decoder_final_state, decoder_context_state = tf.contrib.seq2seq.dynamic_rnn_decoder(cell = decoder_cell,
+                                                                                                        decoder_fn = test_validation_decoder_function,
+                                                                                                        scope = decoding_scope)
+    # Dropout for only Training to improves its Performance
+    return test_predictions
     
-    
-    
+
+# Creating the Decoder RNN
+def decoderRNN(decoder_embedded_input, decoder_embeddings_matrix, encoder_state, num_words, sequence_length, rnn_size, num_layers, word2Int, keep_prob, batch_size):
+#    encoder_state - output of the encoder but that becomes the input to the Decoder
+#    num_words - total no of words in Answer corpus
+#    word2Int - answerswords2Int dict 
+#    num_layers - no of RNN of Decoder.
+#    keep_prob - dropout layers
+#    batch_size 
+    with  tf.VariableScope("decoding") as decoding_scope:
+        # rnn_size = no f input Tensors
+        # num_layers = no of layers
+        # keep_prob = dropout rate
+        # sequence_length = length of the Questions in each Batch
+        lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
+        '''Dropout is a technique used for regularization in neural nets and it can help in learning and preventing overfitting with the data.'''
+        lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = keep_prob) # it wraps lstm Object that we created lstm above
+        # dropout rate = 20% of neurons weights is not Updated to avoid Overfitting
+        decoder_cell = tf.contrib.rnn.MultiRNNCell([lstm_dropout] * num_layers) # Usually it is a Stacked lstm_dropout that we created above
+        # eg. num_layers = 10 => lstm_dropout * 10 => we have created 10 lstm_dropout layer and stacked Implicitly
+        '''What is the decoder cell? An decoder cell
+        is the cell inside the decoder RNN that contains the stacked LSTM layers.'''
+        weights = tf.truncated_normal_initializer(mean = 0.0, stddev = 1.0)
+        biases = tf.zeros_initializer(dtype = tf.float32)
+        output_function = lambda x : tf.contrib.layers.fully_connected(x,
+                                                                       num_outputs = num_words,                                                                  
+                                                                       normalizer_fn = None,
+                                                                       scope = decoding_scope,
+                                                                       weights_initializer = weights,
+                                                                       biases_initializer = biases
+                                                                       )
+        ''' fully_connected creates a variable called weights, representing a fully connected weight matrix, which is multiplied by the inputs to produce a Tensor of hidden units. If a normalizer_fn is provided (such as batch_norm), it is then applied. 
+        Otherwise, if normalizer_fn is None and a biases_initializer is provided then a biases variable would be created and added the hidden units. 
+        Finally, if activation_fn is not None, 
+        it is applied to the hidden units as well.
+        
+        num_outputs: Integer or long, the number of output units in the layer. activation_fn: activation function, set to None to skip it and maintain a linear activation.
+        '''
+        training_predictions = decodingTrainingSet(encoder_state,
+                                                   decoder_cell,
+                                                   decoder_embedded_input,
+                                                   sequence_length,
+                                                   decoding_scope, # with  tf.VariableScope("decoding") as decoding_scope:
+                                                   output_function,
+                                                   keep_prob,
+                                                   batch_size)
+        ''' What is decoding scope.reuse variables() used for? For our approach we get our test
+            predictions with cross validations (that keeps 10% of the training data), and we also use this
+            to predict our answers of the chatbot after it’s training so we set our following variables and
+            function with: 
+        '''
+        decoding_scope.reuse_variables()
+        test_predictions = decodingTestValidationSet(encoder_state,
+                                                     decoder_cell,
+                                                     decoder_embeddings_matrix,
+                                                     word2Int['<SOS>'],
+                                                     word2Int['<EOS>'],
+                                                     sequence_length - 1, # Not include the Last Token
+                                                     num_words, 
+                                                     decoding_scope,
+                                                     output_function,
+                                                     keep_prob,
+                                                     batch_size)
+    return training_predictions, test_predictions 
+
+
+# Building the Seq2Seq Model
+# 9.\ ChatBot\ -\ Step\ 24.mp4
+def seq2seqModel(inputs, targets, keep_prob, batch_size, sequence_length, answers_num_words, questions_num_words, encoder_embedding_size, decoder_embedding_size, rnn_size, num_layers, questionswords2Int):
+#    inputs - questions
+#    targets - Answers  
+#    answers_num_words - total no of words in answers
+#    questions_num_words - total no of words in questions
+#    encoder_embedding_size - no of dim of embedded Matrix for the encoder
+#    decoder_embedding_size - no of dim of embedded Matrix for the decoder
+#    questionswords2Int - dict to preprocess the Targets preprocessTargets(targets, word2Int, batchSize)
+#    num_layers = no of layers with stacked LSTM with dropout Applied
+     ''' Maps a sequence of symbols to a sequence of embeddings.
+     Typical use case would be reusing embeddings between an encoder and decoder'''
+     encoder_embedded_input = tf.contrib.layers.embed_sequence(inputs, 
+                                                       answers_num_words + 1,
+                                                       encoder_embedding_size,
+                                                       initializer = tf.random_uniform_initializer(0, 1))
+     encoder_state = encoder_rnn(encoder_embedded_input, rnn_size, num_layers, keep_prob, sequence_length)
+     preprocessed_targets = preprocessTargets(targets, questionswords2Int, batch_size)
+     decoder_embeddings_matrix = tf.Variable(tf.random_uniform([questions_num_words + 1, decoder_embedding_size], 0, 1))
+     decoder_embedded_input = tf.nn.embedding_lookup(decoder_embeddings_matrix, preprocessed_targets)
+     ''' What is the difference between the Decoder embeddings matrix and Decoder embeddings input?
+     Also what is the purpose of using multiple columns in the decoder embeddings matrix?
+     The purpose of the embeddings matrix is to compute more efficiently the embedding input.
+     Basically, you multiply your vector of inputs by the embeddings matrix to get your embed-ded inputs. 
+     For some further information please take a look at the following resources:'''
+     training_predictions, test_predictions = decoderRNN(decoder_embedded_input, 
+                                                         decoder_embeddings_matrix,
+                                                         encoder_state,
+                                                         questions_num_words,
+                                                         sequence_length,
+                                                         rnn_size,
+                                                         num_layers,
+                                                         questionswords2Int,
+                                                         keep_prob,
+                                                         batch_size)
+     return training_predictions, test_predictions     
+     

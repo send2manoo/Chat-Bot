@@ -24,3 +24,33 @@ for length in range(1, 5+1):
             test_sorted_clean_answers.append(test1[i[0]])
 
 
+import tensorflow as tf
+_ = tf.zeros(shape=(10, 3,3), dtype=tf.float32)
+
+sess = tf.Session()
+print(sess.run(_))
+sess.close()
+
+# https://www.digitalocean.com/community/tutorials/how-to-index-and-slice-strings-in-python-3
+name = "manohar focusing"
+# Slicing
+print(name)
+print(name[-1])
+print(name[8:len(name)]) # focusing
+print(name[:7])  # manohar
+print(name[7:])  #  focusing
+print(name[-15:-7]) # anohar f
+# Striding
+print(name[8:len(name):1]) # focusing
+print(name[0:len(name):2]) # mnhrfcsn
+print(name[::2]) # mnhrfcsn
+'''
+The two colons without specified parameter will include all the characters from the original string, 
+a stride of 1 will include every character without skipping, 
+and negating that stride will reverse the order of the characters.
+'''
+print(name[::-1]) # gnisucof rahonam 
+print(name[::-2]) # giuo aoa
+
+
+
