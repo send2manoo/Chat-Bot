@@ -259,7 +259,7 @@ over the max sequence length'''
 # 1) RNN or LSTM will not allow singel Target that is SINGLE ANSWER. Creating the batches for sorted_clean_answers. why sorted_clean_answers bcuz we need it for decoder. decoder accept the sorted_clean_answers
 # 2) Append <SOS> token to each of sorted_clean_answers beginning. 
 def preprocessTargets(targets, word2Int, batchSize):
-    leftSide = tf.fill(dims = [batchSize, 1], value = word2Int['<SOS>'], name='fill_<SOS>') 
+    leftSide = tf.fill(dims = [batchSize, 1], value = word2Int['<SOS>'], name='fill_SOS') 
     # prettyprint # Output tensor has shape [2, 3]. fill([2, 3], 9) ==> [[9, 9, 9][9, 9, 9]]
     rightSide = tf.strided_slice(input_ = targets, begin = [0, 0], end=[batchSize, -1], strides=[1,1], name='strided_Slice')
     # https://www.digitalocean.com/community/tutorials/how-to-index-and-slice-strings-in-python-3
@@ -275,7 +275,7 @@ def encoder_rnn(rnn_inputs, rnn_size, num_layers, keep_prob, sequence_length):
     # rnn_size = no of input Tensors
     # num_layers = no of layers
     # keep_prob = dropout rate
-    # sequence_length = length of the Questions in each Batch
+    # sequence_length = length of the Questions is 25 from the sorted_clean_questions in each Batch
     lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
     '''Dropout is a technique used for regularization in neural nets and it can help in learning and preventing overfitting with the data.'''
     lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = keep_prob) # it wraps lstm Object that we created lstm above
@@ -312,7 +312,7 @@ def decodingTrainingSet(encoder_state, decoder_cell, decoder_embedded_input, seq
 # encoder_state - we getting from encoder_rnn_layer
 # decoder_cell - The cell in the RNN of the Decoder
 # decoder_embedded_input - An embedding is a mapping of discrete Objects. Such as WORDS to Vector of REAL numbers.
-# sequence_length = length of the Answers in each Batch
+# sequence_length = length of the Answers is 25 from the sorted_clean_answers
 # decoding_scope = tf.variable_scope => An Advanced Data Structure that will WRAP your TENSORFLOW Variables.
 # output_function - Is the Function to return Decoder outputs
 # keep_prob - dropout rate
@@ -356,7 +356,7 @@ def decodingTestValidationSet(encoder_state, decoder_cell, decoder_embeddings_ma
 # encoder_state - we getting from encoder_rnn_layer
 # decoder_cell - The cell in the RNN of the Decoder
 
-# maximum_length = length of the Answers in each Batch
+# maximum_length = length of the Answers is 25 from the sorted_clean_answers
 # decoding_scope = tf.variable_scope => An Advanced Data Structure that will WRAP your TENSORFLOW Variables.
 # output_function - Is the Function to return Decoder outputs
 # keep_prob - dropout rate
@@ -380,7 +380,7 @@ def decodingTestValidationSet(encoder_state, decoder_cell, decoder_embeddings_ma
                                                                               end_of_sequence_id = eos_id,
                                                                               maximum_length = maximum_length,
                                                                               num_decoder_symbols = num_words,
-                                                                              name = 'attn_dec_train')
+                                                                              name = 'attn_dec_test_validation')
     # The attention_decoder_fn_inference is a simple inference function for a sequence-to-sequence model. It should be used when dynamic_rnn_decoder is in the inference mode
     test_predictions, decoder_final_state, decoder_context_state = tf.contrib.seq2seq.dynamic_rnn_decoder(cell = decoder_cell,
                                                                                                         decoder_fn = test_validation_decoder_function,
@@ -397,11 +397,11 @@ def decoderRNN(decoder_embedded_input, decoder_embeddings_matrix, encoder_state,
 #    num_layers - no of RNN of Decoder.
 #    keep_prob - dropout layers
 #    batch_size 
-    with  tf.VariableScope("decoding") as decoding_scope:
-        # rnn_size = no f input Tensors
+    with  tf.variable_scope("decoding") as decoding_scope:
+        # rnn_size = no of input Tensors
         # num_layers = no of layers
         # keep_prob = dropout rate
-        # sequence_length = length of the Questions in each Batch
+        # sequence_length = length of the Answers is 25 from the sorted_clean_answers
         lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
         '''Dropout is a technique used for regularization in neural nets and it can help in learning and preventing overfitting with the data.'''
         lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = keep_prob) # it wraps lstm Object that we created lstm above
@@ -492,3 +492,115 @@ def seq2seqModel(inputs, targets, keep_prob, batch_size, sequence_length, answer
                                                          batch_size)
      return training_predictions, test_predictions     
      
+ ########## PART 3 - TRAINING THE SEQ2SEQ MODEL ###########
+ 
+ # Setting the Hyperparameters
+epochs = 100
+batch_size = 64
+rnn_size = 512
+num_layers = 3 # 3 layer LSTM
+encoding_embedding_size = 512 # 512 column. no of column in the embedding matrix with each of the column corresponding to the embedded values
+decoding_embedding_size = 512 # 512 column. no of column in the embedding matrix with each of the column corresponding to the embedded values
+learning_rate = 0.01
+learning_rate_decay = 0.9 # which percentage the learning rate is reduced over the iterations of training
+min_learning_rate = 0.0001 # Threshold value for learning_rate_decay. Early stopping before learning_rate_decay is reduced too much learning_rate, to Avoid use minimum threshold value min_learning_rate  
+keep_probability = 0.5 # 50% from jeffery hinton paper https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf
+
+# Defining a Session
+tf.reset_default_graph() # remove or release previous Graph # To clear the defined variables and operations of the previous Executions
+session = tf.InteractiveSession() 
+
+# Loading the Model Inputs
+inputs, targets, lr, keep_prob = modelInputs()
+
+# Setting the Sequence Length which is to be 25
+sequence_length = tf.placeholder_with_default(25, shape=None, name='sequence_length')
+
+# Getting the Shape of the Input Tensors
+input_shape = tf.shape(inputs, name = 'input_shape')
+
+# Getting the Training and Test Predictions
+# tf.reverse() changes the dim of the given Tensors like np.reshape() functions
+training_predictions, test_predictions = seq2seqModel(tf.reverse(inputs, [-1]),
+                                                      targets,
+                                                      keep_prob,
+                                                      batch_size,
+                                                      sequence_length,
+                                                      len(answerswords2Int),
+                                                      len(questionswords2Int),
+                                                      encoding_embedding_size,
+                                                      decoding_embedding_size,
+                                                      rnn_size,
+                                                      num_layers,
+                                                      questionswords2Int)
+
+# Setting up the Loss Error, the Optimizer and Gradient Clipping 
+'''What is gradient clipping and why is it necessary?
+Gradient clipping is most common in recurrent neural networks. When gradients are being propagated back in time, 
+they can vanish because they they are continuously multiplied by numbers less than one. 
+This is called the vanishing gradient problem. 
+This is solved by LSTMs and GRUs, and if you’re using a deep feedforward network, 
+this is solved by residual connections. On the other hand, you can have exploding gradients too. 
+This is when they get exponentially large from being multiplied by numbers larger than 1. 
+Gradient clipping will clip the gradients between two numbers to prevent them from getting too large.
+
+Gradient clipping is one of the two ways to tackle exploding gradients. The other method is gradient scaling.
+In gradient clipping, we set a threshold value and if the gradient is more than that then it is clipped. In gradient scaling, we try to scale the gradient by normalization
+''' 
+with tf.name_scope("optimization"):
+    loss_error = tf.contrib.seq2seq.sequence_loss(training_predictions, 
+                                                  targets,
+                                                  tf.ones([input_shape[0], sequence_length])) # Training Predictions , Targets
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    gradients = optimizer.compute_gradients(loss_error)
+    clipped_gradients = [(tf.clip_by_value(grad_tensor, -5., 5.), grad_variable) for grad_tensor, grad_variable in gradients if grad_tensor is not None] # we have add to some safety here to make sure that tensor of the gradient is existing
+    optimizer_gradient_clipping = optimizer.apply_gradients(clipped_gradients)
+ 
+# Padding the sequences with the <PAD> token
+# --------------- before padding -----------
+# Question : ['who', 'are', 'you']
+# Answer   : ['<SOS>', 'I', 'am', 'a', 'bot', '.', '<EOS>']
+# --------------- After padding ------------
+# Question : ['who', 'are', 'you', '<PAD>', '<PAD>', '<PAD>', '<PAD>']
+# Answer   : ['<SOS>', 'I', 'am', 'a', 'bot', '.', '<EOS>']
+# length of the Question Sequence must be Equal to  the length of the Answer Sequence
+    
+#     max_sequence_length = max([len(sequence) for sequence in batch_of_sequences]) =>
+#  max([len([45, 5784, 787] )]) => max([3, 7, 35, ..]) => max_sequence_length = 35
+# [[45, 5784, 787] + [8823] * (35 - 3) => [45, 5784, 787] + [8823, 8823, 8823, 8823, ...upto 33]
+def apply_padding(batch_of_sequences, word2int):
+    max_sequence_length = max([len(sequence) for sequence in batch_of_sequences])
+    return [sequence + [word2int['<PAD>']] * (max_sequence_length - len(sequence)) for sequence in batch_of_sequences]
+
+# Splitting the data into batches of Questions and Answers
+# Reference test.py is added
+def split_into_batches(questions, answers, batch_size):
+    for batch_index in range(0, len(questions) // batch_size): # // slash for integers and / slash for float
+        start_index = batch_index * batch_size # for batch_index in range(0, 137): => 0*64 => 0 , 1*64 => 64 , 2*64 => 128
+        questions_in_batch = questions[start_index : start_index + batch_size] # => (0, 64) => (64, 128) => (128, 192)
+        answers_in_batch = answers[start_index : start_index + batch_size]  # # => (0, 64) => (64, 128) => (128, 192)
+        padded_questions_in_batch = np.array(apply_padding(questions_in_batch, questionswords2Int)) # convert list into Array 
+        padded_answers_in_batch = np.array(apply_padding(answers_in_batch, answerswords2Int))
+        yield padded_questions_in_batch, padded_answers_in_batch       
+
+'''
+cross validation is a techniques that consists of during the training keeping 10% or 15% percent of the training data aside or 
+held out which won't be used to train the neural networks that is which WON'T be basically back propagated it.
+and just to keep track of the predictive power of the model on these observations are like new observations.
+'''
+# Splitting the Questions and Answers into Training and Validation Sets
+training_validation_split = int(len(sorted_clean_questions) * 0.15) # 15% percent for validation set. 15/100 = 0.15
+training_questions = sorted_clean_questions[training_validation_split:] # here we kept 85% of the data for training questions
+training_answers = sorted_clean_answers[training_validation_split:] # here we kept 85% of the data for training answers
+validation_questions = sorted_clean_questions[:training_validation_split] # here we kept 15% of the data for validation questions
+validation_answers = sorted_clean_answers[:training_validation_split] # here we kept 15% of the data for validation answers
+
+# Training
+batch_index_check_training_loss = 100 # training loss every 100 batches
+batch_index_check_validation_loss = ((len(training_questions)) // batch_size // 2) - 1 # len(range(30597, 203984)) => 173387 // 64 => 2812 // 2 => 1406 # Training questions divide by batch size = total no of batches, we have to get half of the batches so divide by 2
+
+
+
+
+
+

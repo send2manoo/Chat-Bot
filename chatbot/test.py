@@ -31,7 +31,9 @@ sess = tf.Session()
 print(sess.run(_))
 sess.close()
 
+############################## MUST READ ###################################
 # https://www.digitalocean.com/community/tutorials/how-to-index-and-slice-strings-in-python-3
+#############################################################################
 name = "manohar focusing"
 # Slicing
 print(name)
@@ -53,4 +55,30 @@ print(name[::-1]) # gnisucof rahonam
 print(name[::-2]) # giuo aoa
 
 
+############################## MUST READ ###################################
+# https://stackoverflow.com/questions/231767/what-does-the-yield-keyword-do
+######################################3#####################################
+# def gen():
+#     l1 = range(5)
+#     for index in l1:
+#         yield index * index
+
+# my_gen = gen()
+# print(my_gen)
+
+# for eachValue in my_gen:
+# 	print(eachValue)
+
+num_list = [500, 600, 700]
+alpha_list = ['x', 'y', 'z']
+
+
+def nested_loop():
+    for number in num_list:
+        print(number)
+        for letter in alpha_list:
+            print(letter)
+
+if __name__ == '__main__':
+    nested_loop()
 
